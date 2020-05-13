@@ -389,10 +389,40 @@ def clean_pl(metadata):
     return rdg
 
 
-def clean_ntd(metadata):
+def clean_nt(metadata):
     ntd = clean_scraped_excel_tables(metadata, 'nt')
     ntd = [n for n in ntd if n is not 'fond']
     ntd = [n for n in ntd if n.shape[1] is not 37]
+
+    # add reports type
+    for n in ntd:
+        aopLength = len(n.columns.str.extract(r'(b\d+)').dropna())
+        if aopLength == 50:
+            n['format_subjekta'] = "firma_2018"
+        elif aopLength == 44:
+            n['format_subjekta'] = "firma_2010"
+        elif aopLength == 42:
+            n['format_subjekta'] = "firma_2018_HHLD"
+        elif aopLength == 42:
+            n['format_subjekta'] = "firma_2010_NEPOZNATO"
+        elif aopLength == 51:
+            n['format_subjekta'] = "banka_2018"
+        elif aopLength == 44:
+            n['format_subjekta'] = "banka_2010"
+        elif aopLength == 57 and n['report_year'] == 2019:
+            n['format_subjekta'] = "osiguranje_2018"
+        elif aopLength == 57:
+            n['format_subjekta'] = "osiguranje_2010"
+        elif aopLength == 40:
+            n['format_subjekta'] = "zb_2010"
+            
+    return ntd
+
+
+def clean_ntd(metadata):
+    ntd = clean_scraped_excel_tables(metadata, 'nd')
+    ntd = [n for n in ntd if n is not 'fond']
+    ntd = [n for n in ntd if n.shape[1] is not 39]
 
     # add reports type
     for n in ntd:
@@ -519,7 +549,90 @@ def convert_2018_to_2010_rdg(rdg):
 
 
 def convert_2018_to_2010_ntd(ntd):
+    # NTD
+    ntdSkupa = [b.copy() for b in ntd if (b['format_subjekta'] == 'firma_2018').any()]
+    for b in ntdSkupa:
+        b['abc001'] = b['b001']  # 1. Profit before tax
+        b['abc002'] = b['b003']  # 2. Depreciation and amortisation
+        b['abc003'] = np.where(b['b013'] >= 0, np.abs(b['b013']), 0)  # 3. Increase in short-term liabilities
+        b['abc004'] = np.where(b['b014'] >= 0, np.abs(b['b014']), 0)  # 4. Decrease in short-term receivables
+        b['abc005'] = np.where(b['b015'] >= 0, np.abs(b['b015']), 0)  # 5. Decrease in inventories
+        b['abc006'] = np.where(b['b016'] >= 0, np.abs(b['b016']), 0) + \
+            np.where((b['b011'] - b['b001'] - b['b003']) >= 0,
+                    np.abs(b['b011'] - b['b001'] - b['b003']), 0) + \
+            np.where(b['b018'] >= 0, np.abs(b['b018']), 0) + \
+            np.where(b['b019'] >= 0, np.abs(b['b019']), 0)   # 6. Other cash flow increases
+        b['abc007'] = b['b001'] + b['b003'] + b['abc003'] + b['abc004'] +\
+            b['abc005'] + b['abc006']
+        b['abc008'] = np.where(b['b013'] <= 0, np.abs(b['b013']), 0)  # 1. Decrease in short-term liabilities
+        b['abc009'] = np.where(b['b014'] <= 0, np.abs(b['b014']), 0)  # 2. Increase in short-term receivables
+        b['abc010'] = np.where(b['b015'] <= 0, np.abs(b['b015']), 0)  # 3. Increase in inventories
+        b['abc011'] = np.where(b['b016'] <= 0, np.abs(b['b016']), 0) + \
+            np.where((b['b011'] - b['b001'] - b['b003']) <= 0,
+                    np.abs(b['b011'] - b['b001'] - b['b003']), 0) + \
+            np.where(b['b018'] <= 0, np.abs(b['b018']), 0) + \
+            np.where(b['b019'] <= 0, np.abs(b['b019']), 0)   # 6. Other cash flow increases
+        b['abc012'] = b['b008'] + b['b009'] + b['abc010'] + b['abc011']
+
+        b['abc015'] = np.abs(b['b021'])  # 1. Novčani primici od prodaje dugotrajne materijalne i nematerijalne imovine
+        b['abc016'] = np.abs(b['b022'])  # 2. Cash inflows from sale of equity and debt instruments
+        b['abc017'] = np.abs(b['b023'])  # 3. Interest receipts
+        b['abc018'] = np.abs(b['b024'])  # 4. Dividends receipts
+        b['abc019'] = b['b025'] + b['b026']  # 5. Other cash inflows from investment activities
+        b['abc020'] = np.abs(b['b027'])  # III. Total cash inflows from investment activities (015 till 019)
+        b['abc021'] = np.abs(b['b028'])  # 1. Cash outflows for purchase of long-term tangible and intangible assets
+        b['abc022'] = np.abs(b['b029'])  # 2. Cash outflows for purchase of equity and debt financial instruments
+        b['abc023'] = np.abs(b['b030'] + b['b031'] + b['b032'])  # 3. Other cash outflows from investment activities
+        b['abc024'] = np.abs(b['b033'])  # IV. Total cash outflows from investment activities (021 till 023)
+        
+        b['abc027'] = b['b035'] + b['b036']  # 1. Cash receipts from issuance from equity and debt financial instruments
+        b['abc028'] = np.abs(b['b037'])   # 2. Cash inflows from loans, debentures, credits and other borrowings
+        b['abc029'] = np.abs(b['b038'])  # 3. Other cash inflows from financial activities
+        b['abc030'] = np.abs(b['b039'])  # V. Total cash inflows from financial activities (027 till 029)
+        b['abc031'] = np.abs(b['b040'])  # 1. Cash outflows for repayment of loans and bonds
+        b['abc032'] = np.abs(b['b041'])  # 2. Dividends paid
+        b['abc033'] = np.abs(b['b042'])  # 3. Cash outflows for finance lease
+        b['abc034'] = np.abs(b['b043'])  # 4. Cash outflows for purchase of own stocks
+        b['abc035'] = np.abs(b['b044'])  # 5. Other cash outflows from financial activities
+        b['abc036'] = np.abs(b['b045'])  # VI. Total cash outflows from financial activities (031 till 035)
+        
+        b['abc041'] = np.abs(b['b049'])  # Cash and cash equivalents at the beginning of the period
+        b['abc042'] = np.where(b['b048'] >= 0, b['b048'], 0)  # Increase of cash and cash equivalents
+        b['abc043'] = np.where(b['b048'] <= 0, np.abs(b['b048']), 0)   # Decrease of cash and cash equivalents
+        b['abc044'] = np.abs(b['b050'])  # Cash and cash equivalents at the end of the period
+        
+        b['abc013'] = np.where((b['abc007'] - b['abc012']) >= 0,
+                            np.abs(b['abc007'] - b['abc012']), 0)  # A1) NET INCREASE OF CASH FLOW FROM OPERATING ACTIVITIES
+        b['abc014'] = np.where((b['abc007'] - b['abc012']) <= 0,
+                            np.abs(b['abc007'] - b['abc012']), 0)  # A2) NET DECREASE OF CASH FLOW FROM OPERATING ACTIVITIES (012-007)
+        b['abc025'] = np.where((b['abc020'] - b['abc024']) >= 0,
+                            np.abs(b['abc010'] - b['abc024']), 0)  # B1) NET INCREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (020-024)
+        b['abc026'] = np.where((b['abc020'] - b['abc024']) <= 0,
+                            np.abs(b['abc020'] - b['abc024']), 0)  # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (024-020)
+        b['abc037'] = np.where((b['abc030'] - b['abc036']) >= 0,
+                            np.abs(b['abc030'] - b['abc036']), 0)  # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (020-024)
+        b['abc038'] = np.where((b['abc030'] - b['abc036']) <= 0,
+                            np.abs(b['abc030'] - b['abc036']), 0)  # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (024-020)
+        
+        b['abc039'] = b['abc013'] - b['abc014'] + b['abc025'] - b['abc026'] +\
+            b['abc037'] - b['abc038']  # Total increase of cash flow (013 – 014 + 025 – 026 + 037 – 038)
+        b['abc040'] = b['abc014'] - b['abc013'] + b['abc026'] - b['abc025'] +\
+            b['abc038'] - b['abc037']  # Total increase of cash flow (013 – 014 + 025 – 026 + 037 – 038)
+        
+    ntdSkupa = [tbl.loc[:, ~tbl.columns.str.startswith('b')] for tbl in ntdSkupa]
+    ntdSkupa = pd.concat(ntdSkupa, axis=0)
+    ntdSkupa.columns = ntdSkupa.columns.str.replace(r"abc", "b")
+    ntdSkupa[['format_subjekta']] = "firma_2010"
+    ntd = pd.concat(ntd, axis=0)
+    ntd = pd.concat([ntd, ntdSkupa], axis=0)
     
+    # firma 210 ZAVRSITI AKO SE POJAVI IZVJESTAJ S NOVCANIM TOKOM U KOJEM JE 2010 GODINA; ZA SADA IH NEMA
+    # U R-U POCINJE U RETKU 641 (AKO NISAM NEŠTO U MEDJUVREMENU MJENJAO)
+    # nt_skupa_2010  =[b.copy() for b in ntd if (b['format_subjekta'] == 'firma_2010').any()]
+
+    ntd = pd.concat(ntd, axis=0)
+    ntd = pd.concat([ntd, nt_skupa_2018], axis=0)
+
     return ntd
 
 
@@ -571,129 +684,149 @@ if __name__ == '__main__':
 
 
 
-# NTD
-ntdSkupa = [b.copy() for b in ntd if (b['format_subjekta'] == 'firma_2018').any()]
-for b in ntdSkupa:
+nt_skupa_2018 = [b.copy() for b in ntd if (b['format_subjekta'] == 'firma_2018').any()]
+for b in nt_skupa_2018:
     b['abc001'] = b['b001']  # 1. Profit before tax
     b['abc002'] = b['b003']  # 2. Depreciation and amortisation
     b['abc003'] = np.where(b['b013'] >= 0, np.abs(b['b013']), 0)  # 3. Increase in short-term liabilities
     b['abc004'] = np.where(b['b014'] >= 0, np.abs(b['b014']), 0)  # 4. Decrease in short-term receivables
+    b['abc005'] = np.where(b['b015'] >= 0, np.abs(b['b015']), 0)  # 5. Decrease in inventories
+    b['abc006'] = np.where(b['b016'] >= 0, np.abs(b['b016']), 0) + \
+        np.where((b['b011'] - b['b001'] - b['b003']) >= 0,
+                np.abs(b['b011'] - b['b001'] - b['b003']), 0) + \
+        np.where(b['b018'] >= 0, np.abs(b['b018']), 0) + \
+        np.where(b['b019'] >= 0, np.abs(b['b019']), 0)   # 6. Other cash flow increases
+    b['abc007'] = b['b001'] + b['b003'] + b['abc003'] + b['abc004'] +\
+        b['abc005'] + b['abc006']
+    b['abc008'] = np.where(b['b013'] <= 0, np.abs(b['b013']), 0)  # 1. Decrease in short-term liabilities
+    b['abc009'] = np.where(b['b014'] <= 0, np.abs(b['b014']), 0)  # 2. Increase in short-term receivables
+    b['abc010'] = np.where(b['b015'] <= 0, np.abs(b['b015']), 0)  # 3. Increase in inventories
+    b['abc011'] = np.where(b['b016'] <= 0, np.abs(b['b016']), 0) + \
+        np.where((b['b011'] - b['b001'] - b['b003']) <= 0,
+                np.abs(b['b011'] - b['b001'] - b['b003']), 0) + \
+        np.where(b['b018'] <= 0, np.abs(b['b018']), 0) + \
+        np.where(b['b019'] <= 0, np.abs(b['b019']), 0)   # 6. Other cash flow increases
+    b['abc012'] = b['b008'] + b['b009'] + b['abc010'] + b['abc011']
+
+    b['abc015'] = np.abs(b['b021'])  # 1. Novčani primici od prodaje dugotrajne materijalne i nematerijalne imovine
+    b['abc016'] = np.abs(b['b022'])  # 2. Cash inflows from sale of equity and debt instruments
+    b['abc017'] = np.abs(b['b023'])  # 3. Interest receipts
+    b['abc018'] = np.abs(b['b024'])  # 4. Dividends receipts
+    b['abc019'] = b['b025'] + b['b026']  # 5. Other cash inflows from investment activities
+    b['abc020'] = np.abs(b['b027'])  # III. Total cash inflows from investment activities (015 till 019)
+    b['abc021'] = np.abs(b['b028'])  # 1. Cash outflows for purchase of long-term tangible and intangible assets
+    b['abc022'] = np.abs(b['b029'])  # 2. Cash outflows for purchase of equity and debt financial instruments
+    b['abc023'] = np.abs(b['b030'] + b['b031'] + b['b032'])  # 3. Other cash outflows from investment activities
+    b['abc024'] = np.abs(b['b033'])  # IV. Total cash outflows from investment activities (021 till 023)
     
+    b['abc027'] = b['b035'] + b['b036']  # 1. Cash receipts from issuance from equity and debt financial instruments
+    b['abc028'] = np.abs(b['b037'])   # 2. Cash inflows from loans, debentures, credits and other borrowings
+    b['abc029'] = np.abs(b['b038'])  # 3. Other cash inflows from financial activities
+    b['abc030'] = np.abs(b['b039'])  # V. Total cash inflows from financial activities (027 till 029)
+    b['abc031'] = np.abs(b['b040'])  # 1. Cash outflows for repayment of loans and bonds
+    b['abc032'] = np.abs(b['b041'])  # 2. Dividends paid
+    b['abc033'] = np.abs(b['b042'])  # 3. Cash outflows for finance lease
+    b['abc034'] = np.abs(b['b043'])  # 4. Cash outflows for purchase of own stocks
+    b['abc035'] = np.abs(b['b044'])  # 5. Other cash outflows from financial activities
+    b['abc036'] = np.abs(b['b045'])  # VI. Total cash outflows from financial activities (031 till 035)
     
-    b[col_create(list(range(114, 130)))] = b[col_create(list(range(131, 147)), 'b')]
-    b[col_create(list(range(130, 132)))] = b[col_create(list(range(153, 155)), 'b')]
-    b['abc132'] = b['b155'] +b['b157'] + b['b158'] + b['b159']
-    b['abc133'] = b['b168'] + b['b169']  + b['b171']
-    b['abc134'] = b['b156']
-    b[col_create(list(range(135, 138)))] = b[col_create(list(range(163, 166)), 'b')]
-    b['abc138'] = b['b166'] +b['b167']
-    b['abc139'] = b['b160'] + b['b161']  + b['b162']
-    b['abc140'] = b['b170']
-    b['abc141'] = b['b172']
-    b['abc142'] = b['b173'] + b['b175']
-    b['abc143'] = b['b174'] + b['b176']
-    b['abc144'] = 0
-    b['abc145'] = 0
-    b[col_create(list(range(146, 148)))] = b[col_create(list(range(177, 179)), 'b')]
-    b['abc148'] = b['b178'] + b['b186']
-    b['abc149'] = b['b180'] + b['b187']
-    b['abc150'] = b['b181'] + b['b188']
-    b['abc151'] = b['b182'] + b['b189']
-    b['abc152'] = b['b199']
-    b['abc153'] = b['b184'] + b['b190']
-    b['abc154'] = b['b185'] + b['b191']
-    b[col_create(list(range(155, 157)))] = b[col_create(list(range(200, 202)), 'b')]
-    b['abc157'] = b['b159']
-    b[col_create(list(range(158, 165)))] = b[col_create(list(range(203, 210)), 'b')]
-    b['abc165'] = b['b210'] + b['b211']
-    b[col_create(list(range(166, 169)))] = b[col_create(list(range(212, 215)), 'b')]
-    b[col_create(list(range(169, 171)))] = b[col_create(list(range(216, 218)), 'b')]
+    b['abc041'] = np.abs(b['b049'])  # Cash and cash equivalents at the beginning of the period
+    b['abc042'] = np.where(b['b048'] >= 0, b['b048'], 0)  # Increase of cash and cash equivalents
+    b['abc043'] = np.where(b['b048'] <= 0, np.abs(b['b048']), 0)   # Decrease of cash and cash equivalents
+    b['abc044'] = np.abs(b['b050'])  # Cash and cash equivalents at the end of the period
     
-ntdSkupa = [tbl.loc[:, ~tbl.columns.str.startswith('b')] for tbl in ntdSkupa]
-ntdSkupa = pd.concat(ntdSkupa, axis=0)
-ntdSkupa.columns = ntdSkupa.columns.str.replace(r"abc", "b")
-ntdSkupa[['format_subjekta']] = "firma_2010"
-rdg = pd.concat(rdg, axis=0)
-rdg = pd.concat([rdg, ntdSkupa], axis=0)
+    b['abc013'] = np.where((b['abc007'] - b['abc012']) >= 0,
+                        np.abs(b['abc007'] - b['abc012']), 0)  # A1) NET INCREASE OF CASH FLOW FROM OPERATING ACTIVITIES
+    b['abc014'] = np.where((b['abc007'] - b['abc012']) <= 0,
+                        np.abs(b['abc007'] - b['abc012']), 0)  # A2) NET DECREASE OF CASH FLOW FROM OPERATING ACTIVITIES (012-007)
+    b['abc025'] = np.where((b['abc020'] - b['abc024']) >= 0,
+                        np.abs(b['abc010'] - b['abc024']), 0)  # B1) NET INCREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (020-024)
+    b['abc026'] = np.where((b['abc020'] - b['abc024']) <= 0,
+                        np.abs(b['abc020'] - b['abc024']), 0)  # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (024-020)
+    b['abc037'] = np.where((b['abc030'] - b['abc036']) >= 0,
+                        np.abs(b['abc030'] - b['abc036']), 0)  # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (020-024)
+    b['abc038'] = np.where((b['abc030'] - b['abc036']) <= 0,
+                        np.abs(b['abc030'] - b['abc036']), 0)  # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (024-020)
+    
+    b['abc039'] = b['abc013'] - b['abc014'] + b['abc025'] - b['abc026'] +\
+        b['abc037'] - b['abc038']  # Total increase of cash flow (013 – 014 + 025 – 026 + 037 – 038)
+    b['abc040'] = b['abc014'] - b['abc013'] + b['abc026'] - b['abc025'] +\
+        b['abc038'] - b['abc037']  # Total increase of cash flow (013 – 014 + 025 – 026 + 037 – 038)
+    
+nt_skupa_2018 = [tbl.loc[:, ~tbl.columns.str.startswith('b')] for tbl in nt_skupa_2018]
+nt_skupa_2018 = pd.concat(nt_skupa_2018, axis=0)
+nt_skupa_2018.columns = nt_skupa_2018.columns.str.replace(r"abc", "b")
+nt_skupa_2018[['format_subjekta']] = "firma_2010"
+ntd = pd.concat(ntd, axis=0)
+ntd = pd.concat([ntd, nt_skupa_2018], axis=0)
 
 
 
-# firma 2018
-nt_skupa_2018 <- purrr::keep(nt, ~ any(.x$format_subjekta == "firma_2018"))
-nt_skupa_2018 <- lapply(nt_skupa_2018, function(x) {
-  DT <- as.data.table(x)
-  DT <- DT[, `:=` (
-    abc001 = b001, # 1. Profit before tax
-    abc002 = b003, # 2. Depreciation and amortisation
-    abc003 = ifelse(b013 >= 0, abs(b013), 0), # 3. Increase in short-term liabilities
-    abc004 = ifelse(b014 >= 0, abs(b014), 0), # 4. Decrease in short-term receivables
-    abc005 = ifelse(b015 >= 0, abs(b015), 0), # 5. Decrease in inventories
-    abc006 = ifelse(b016 >= 0, abs(b016), 0) + ifelse((b011 - b001 - b003) >= 0, abs(b011 - b001 - b003), 0) + 
-      ifelse(b018 >= 0, abs(b018), 0) + ifelse(b019 >= 0, abs(b019), 0), # 6. Other cash flow increases
-    abc007 = b001 + b003 + ifelse(b013 >= 0, abs(b013), 0) + ifelse(b014 >= 0, abs(b014), 0) +
-      ifelse(b015 >= 0, abs(b015), 0) + ifelse(b016 >= 0, abs(b016), 0) + 
-      ifelse((b011 - b001 - b003) >= 0, abs(b011 - b001 - b003), 0) + 
-      ifelse(b018 >= 0, abs(b018), 0) + ifelse(b019 >= 0, abs(b019), 0),
-    
-    abc008 = ifelse(b013 <= 0, abs(b013), 0), # 1. Decrease in short-term liabilities
-    abc009 = ifelse(b014 <= 0, abs(b014), 0), # 2. Increase in short-term receivables
-    abc010 = ifelse(b015 <= 0, abs(b015), 0), # 3. Increase in inventories
-    abc011 = ifelse(b016 <= 0, abs(b016), 0) + ifelse((b011 - b001 - b003) <= 0, abs(b011 - b001 - b003), 0) + 
-      ifelse(b018 <= 0, abs(b018), 0) + ifelse(b019 <= 0, abs(b019), 0), # 6. Other cash flow increases
-    abc012 = ifelse(b013 <= 0, abs(b013), 0) + ifelse(b014 <= 0, abs(b014), 0) +
-      ifelse(b015 <= 0, abs(b015), 0) + ifelse(b016 <= 0, abs(b016), 0) + 
-      ifelse((b011 - b001 - b003) <= 0, abs(b011 - b001 - b003), 0) + 
-      ifelse(b018 <= 0, abs(b018), 0) + ifelse(b019 <= 0, abs(b019), 0),
-    
-    abc015 = abs(b021), # 1. Novčani primici od prodaje dugotrajne materijalne i nematerijalne imovine
-    abc016 = abs(b022), # 2. Cash inflows from sale of equity and debt instruments
-    abc017 = abs(b023), # 3. Interest receipts
-    abc018 = abs(b024), # 4. Dividends receipts
-    abc019 = b025 + b026, # 5. Other cash inflows from investment activities
-    abc020 = abs(b027), # III. Total cash inflows from investment activities (015 till 019)
-    abc021 = abs(b028), # 1. Cash outflows for purchase of long-term tangible and intangible assets
-    abc022 = abs(b029), # 2. Cash outflows for purchase of equity and debt financial instruments
-    abc023 = abs(b030 + b031 + b032), # 3. Other cash outflows from investment activities
-    abc024 = abs(b033), # IV. Total cash outflows from investment activities (021 till 023)
-    
-    abc027 = b035 + b036, #1. Cash receipts from issuance from equity and debt financial instruments
-    abc028 = abs(b037), # 2. Cash inflows from loans, debentures, credits and other borrowings
-    abc029 = abs(b038), # 3. Other cash inflows from financial activities
-    abc030 = abs(b039),  # V. Total cash inflows from financial activities (027 till 029)
-    abc031 = abs(b040), # 1. Cash outflows for repayment of loans and bonds
-    abc032 = abs(b041), # 2. Dividends paid
-    abc033 = abs(b042), # 3. Cash outflows for finance lease
-    abc034 = abs(b043),  # 4. Cash outflows for purchase of own stocks
-    abc035 = abs(b044),  # 5. Other cash outflows from financial activities
-    abc036 = abs(b045),  # VI. Total cash outflows from financial activities (031 till 035)
-    
-    abc041 = b049, # Cash and cash equivalents at the beginning of the period
-    abc042 = ifelse(b048 >= 0, b048, 0), # Increase of cash and cash equivalents
-    abc043 = ifelse(b048 <= 0, abs(b048), 0), # Decrease of cash and cash equivalents
-    abc044 = b050  # Cash and cash equivalents at the end of the period
-  )]
+
+
+ntd = clean_scraped_excel_tables(metadata, 'nt')
+ntd = [n for n in ntd if n is not 'fond']
+ntd = [n for n in ntd if n.shape[1] is not 37]
+
+# add reports type
+for n in ntd:
+    aopLength = len(n.columns.str.extract(r'(b\d+)').dropna())
+    if aopLength == 50:
+        n['format_subjekta'] = "firma_2018"
+    elif aopLength == 44:
+        n['format_subjekta'] = "firma_2010"
+    elif aopLength == 42:
+        n['format_subjekta'] = "firma_2018_HHLD"
+    elif aopLength == 42:
+        n['format_subjekta'] = "firma_2010_NEPOZNATO"
+    elif aopLength == 51:
+        n['format_subjekta'] = "banka_2018"
+    elif aopLength == 44:
+        n['format_subjekta'] = "banka_2010"
+    elif aopLength == 57 and n['report_year'] == 2019:
+        n['format_subjekta'] = "osiguranje_2018"
+    elif aopLength == 57:
+        n['format_subjekta'] = "osiguranje_2010"
+    elif aopLength == 40:
+        n['format_subjekta'] = "zb_2010"
+            
+
+# NT
+nt_process <- gfi_scrap(metadata, tip_gfi = "nt")
+nt <- discard(nt_process, is.null)
+if (length(which(nt == "fond")) != 0) {
+  nt <- nt[-which(nt == "fond")]
+}
+# nt <- nt[-which(nt == "liste")]
+nt <- map(nt, ~ dplyr::mutate(.x, report_year = max(year)))
+nt <- lapply(nt, function(x) {
+  if (("b015" %in% colnames(x)[1])) {
+    x[, paste0("b", str_pad(1:14, 3, "left", "0"))] <- 0
+  }
+  x
 })
-nt_skupa_2018 <- lapply(nt_skupa_2018, function(x) {
-  x <- x[, `:=` (
-    abc013 = ifelse((abc007 - abc012) >= 0, abs(abc007 - abc012), 0), # A1) NET INCREASE OF CASH FLOW FROM OPERATING ACTIVITIES  
-    abc014 = ifelse((abc007 - abc012) <= 0, abs(abc007 - abc012), 0), # A2) NET DECREASE OF CASH FLOW FROM OPERATING ACTIVITIES (012-007)
-    abc025 = ifelse((abc020 - abc024) >= 0, abs(abc020 - abc024), 0), # B1) NET INCREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (020-024)
-    abc026 = ifelse((abc020 - abc024) <= 0, abs(abc020 - abc024), 0), # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (024-020)
-    abc037 = ifelse((abc030 - abc036) >= 0, abs(abc030 - abc036), 0), # B1) NET INCREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (020-024)
-    abc038 = ifelse((abc030 - abc036) <= 0, abs(abc030 - abc036), 0) # B2) NET DECREASE OF CASH FLOW FROM INVESTMENT ACTIVITIES (024-020)
-  )]
-})
-nt_skupa_2018 <- lapply(nt_skupa_2018, function(x) {
-  x <- x[, `:=` (
-    abc039 = abc013 - abc014 + abc025 - abc026 + abc037 - abc038, # Total increase of cash flow (013 – 014 + 025 – 026 + 037 – 038)
-    abc040 = abc014 - abc013 + abc026 - abc025 + abc038 - abc037 # Total decrease of cash flow (014 – 013 + 026 – 025 + 038 – 037)
-  )]
-})
-nt_skupa_2018 <- lapply(nt_skupa_2018, function(x) {x <- x %>% dplyr::select(-grep("b\\d{3}", colnames(x)))})
-nt_skupa_2018 <- lapply(nt_skupa_2018, function(x) {
-  colnames(x) <- gsub("abc", "b", colnames(x)); x
-})
-nt_skupa_2018 <- lapply(nt_skupa_2018, function(x) {x <- x %>%
-  dplyr::select(paste0("b", str_pad(1:44, 3, "left", "0")), dplyr::everything()) %>%
-  dplyr::mutate(format_subjekta = "firma_2010")
+
+# dodati tipove izvjestaja
+nt <- lapply(nt, function(x) {
+  x <- x %>% mutate(
+    format_subjekta = case_when(
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 50 ~ "firma_2018", 
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 44 & colnames(.)[1] == "b073" ~ "firma_2009",
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 44 ~ "firma_2010",
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 45 ~ "firma_nepoznato",
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 46 ~ "firma_2009_direktna_metoda",
+      # (length(.) - 8) == 47 ~ "firma_2009_det",
+      # (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 51 ~ "banka_2018", # nema nijedne, dodat iz direktne metode
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 38 & colnames(.)[1] == "b075" ~ "banka_2009",
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 42 ~ "banka_2009_det",
+      
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 57 & report_year == 2019 ~ "osiguranje_2018",
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 57 & report_year == 2018 & quarter == "1Y" ~ "osiguranje_2018",
+      
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 57 ~ "osiguranje_2010",
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 59 ~ "osiguranje_2009",
+      (length(.) - length(grep("^([^0-9]*)$", colnames(.)))) == 38 ~ "zb_2018"
+    )
+  )
+  x
 })
