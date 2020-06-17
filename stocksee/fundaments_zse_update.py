@@ -98,7 +98,7 @@ def fin_stat_tag_converter(type_fs):
         tip_gfi_pattern = r"rdg|rdg |rdig|pl ht|p&l|PL|pl"
     elif type_fs is "nt":
         tip_gfi_pattern = r"nt_i|novčani|novcani|○cf|int|nt-i|^nt$|cash"
-    elif type_fs is "ntd":
+    elif type_fs is "nd":
         tip_gfi_pattern = r"nt_d|dnt|dir|nt-d|\(d\)"
         
     return tip_gfi_pattern
@@ -133,7 +133,7 @@ def import_excel(file_name, symbol, gfi_type):
 
     # if identify two sheets, keep only first
     if len(reportIndex) >= 2:
-        reportIndex = reportIndex[0]
+        reportIndex = [reportIndex[0]]
     if symbol in fonds:
         return "fond"
 
@@ -297,12 +297,67 @@ def add_lavels_insurance_inc(df, gfi_type):
         df['vrsta_osiguranja'].iloc[np.arange(2, df.shape[0], 3)] = "ukupno"
         
     return df
-        
+
+
+################ DEBUG #################    
+metadata = gfi_metadata.copy()
+gfi_type = 'nd'
+for index, row in metadata[['filename', 'symbol']].iterrows():
+    """
+    Import excel files web scraped from ZSE.
+    Import only data frmo one sheet.
+    """
+    print(index)
     
+    # get sheet pattern
+    sheet_pattern = fin_stat_tag_converter(gfi_type)
+
+    # import excel from directory
+    print()
+    xl = pd.ExcelFile('zse_fs/' + 'JDOS-fin2020-1Q-NotREV-K-HR.xlsx')
+    xl = pd.ExcelFile('zse_fs/' + row['filename'])
+
+    # if excel file contain only 2 sheets: Podaci and RefStr, cont.
+    if all([sheet in xl.sheet_names for sheet in ["Podaci", "RefStr"]]):
+        continue
+    sheets = list(map(str.lower, xl.sheet_names))
+    sheets = [re.sub("bilješke", "dsfafafdsafdsa", sheet) for sheet in sheets]
+
+     # if all sheet names are "liste" append and cont
+    if all([sheets == "liste" for sheet in sheets]):
+        continue
+    reportIndex = [i for i, sheet in enumerate(sheets)
+                   if re.match(sheet_pattern, sheet)]
+
+    # continue if no matched sheet
+    if len(reportIndex) == 0:
+        continue
+
+    # if identify two sheets, keep only first
+    if len(reportIndex) >= 2:
+        reportIndex = [reportIndex[0]]
+    if row['symbol'] in fonds:
+        continue
+
+    # import excel sheet
+    print(reportIndex)
+    df = pd.read_excel('zse_fs/' + row['filename'], sheet_name=reportIndex[0])
+    
+    # return None it df is empty (no data on FS)
+    if len(df) == 0:
+     return None
+    
+    return df
+
+
+################ DEBUG #################    
+
+
 def clean_scraped_excel_tables(metadata, gfi_type):
     xls = [import_excel(row['filename'], row['symbol'], gfi_type) 
         for index, row in metadata[['filename', 'symbol']].iterrows()]
-    clean_df = [remove_rbr_columns(df) for df in xls if df is not None]
+    clean_df = [df for df in xls if df is not 'fond']
+    clean_df = [remove_rbr_columns(df) for df in clean_df if df is not None]
     clean_df = [extract_aop(df) for df in clean_df if df is not None]
     clean_df = [remove_unnecesary_columns(df) for df in clean_df if df is not None]
     clean_df = [remove_unnecesary_rows(df) for df in clean_df if df is not None]
@@ -395,7 +450,7 @@ def clean_nt(metadata):
     ntd = [n for n in ntd if n.shape[1] is not 37]
 
     # add reports type
-    for n in ntd:
+    for i, n in enumerate(ntd):
         aopLength = len(n.columns.str.extract(r'(b\d+)').dropna())
         if aopLength == 50:
             n['format_subjekta'] = "firma_2018"
@@ -409,7 +464,7 @@ def clean_nt(metadata):
             n['format_subjekta'] = "banka_2018"
         elif aopLength == 44:
             n['format_subjekta'] = "banka_2010"
-        elif aopLength == 57 and n['report_year'] == 2019:
+        elif aopLength == 57 and (n['report_year'] == 2019).all():
             n['format_subjekta'] = "osiguranje_2018"
         elif aopLength == 57:
             n['format_subjekta'] = "osiguranje_2010"
@@ -425,6 +480,9 @@ def clean_ntd(metadata):
     ntd = [n for n in ntd if n.shape[1] is not 39]
 
     # add reports type
+    ############ TEST
+    n = ntd[0]
+    ############ TEST
     for n in ntd:
         aopLength = len(n.columns.str.extract(r'(b\d+)').dropna())
         if aopLength == 50:
@@ -439,7 +497,7 @@ def clean_ntd(metadata):
             n['format_subjekta'] = "banka_2018"
         elif aopLength == 44:
             n['format_subjekta'] = "banka_2010"
-        elif aopLength == 57 and n['report_year'] == 2019:
+        elif aopLength == 57 and (n['report_year'] == 2019).all():
             n['format_subjekta'] = "osiguranje_2018"
         elif aopLength == 57:
             n['format_subjekta'] = "osiguranje_2010"
@@ -660,7 +718,7 @@ if __name__ == '__main__':
     gfi_metadata = clean_gfi_table(gfi_metadata)
     
     # add gfiMeta to database
-    write_to_db_update(gfiMeta, 'odvjet12_stocks', 'gfi_metadata')
+    write_to_db_update(gfi_metadata, 'odvjet12_stocks', 'gfi_metadata')
     
     # download new xls files
     # ############################## WHERE TO SAVE ? ###############################
@@ -672,9 +730,10 @@ if __name__ == '__main__':
 
     # ############################## WHERE TO SAVE ? ###############################
 
-    # balance sheet
+    # clean all financial statements
     bilanca = clean_balance_sheet(gfi_metadata)
     pl = clean_pl(gfi_metadata)
+    nt = clean_nt(gfi_metadata)
     ntd = clean_ntd(gfi_metadata)
 
     # convert 2018 FS to 2010 FS

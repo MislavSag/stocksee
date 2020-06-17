@@ -91,8 +91,8 @@ vix_df = pd.concat(data, axis=0)
 vix_df.set_index(vix_df.date, inplace=True)
 vix_df.drop(columns=['date'], inplace=True)
 vix_df.sort_index(inplace=True)
-vix_df.index = vix_df.index.tz_localize('utc').tz_convert('America/Chicago')  #convert timezones to vix timzone
-vix_df['date'] = pd.to_datetime(vix_df.index).strftime("%Y-%m-%d %H:%M:%S")
+vix_df.index = vix_df.index.tz_localize('utc').tz_convert('America/Chicago').strftime("%Y-%m-%d %H:%M:%S")  #convert timezones to vix timzone
+vix_df['date'] = pd.to_datetime(vix_df.index)
 vix_df = vix_df[['date', 'open', 'high', 'low', 'close', 'volume', 'average', 'barCount']]
 vix_df.head()
 vix_df.tail()
@@ -104,7 +104,7 @@ vix_merged.head()
 vix_merged.tail()
 
 # add to database
-write_to_db(vix, "odvjet12_market_data_usa", 'VIX')
+write_to_db(vix_merged, "odvjet12_market_data_usa", 'VIX')
 
 # disconnect interactive brokers
 ib.disconnect()
