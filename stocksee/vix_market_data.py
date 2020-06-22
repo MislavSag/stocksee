@@ -103,6 +103,9 @@ vix_merged = pd.concat([vix, vix_new], axis=0)
 vix_merged.head()
 vix_merged.tail()
 
+# remove duplicates
+vix.drop_duplicates(keep='first', inplace=True)
+
 # add to database
 write_to_db(vix_merged, "odvjet12_market_data_usa", 'VIX')
 
